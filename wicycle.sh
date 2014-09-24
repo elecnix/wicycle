@@ -1,5 +1,10 @@
 #!/bin/sh
 
+HOME_HOSTNAME=${HOME_HOSTNAME:-destination.host}
+HOME_PORT=${HOME_PORT:-2413}
+LOG_BASEDIR=${LOG_BASEDIR:-/tmp/wicycle/log}
+HOME_BASEURL=http://$HOME_HOSTNAME:$HOME_PORT
+
 CheckNetwork()
 {
   logger wicycle: Checking network...
@@ -21,10 +26,19 @@ ScanNetworks()
   iw phy phy0 interface add scan0 type station
   ifconfig scan0 up
   while [ "$scanres" = "" ]; do
-    scanres=$(iw scan0 scan)
+    NOW=$(date -Iseconds)
+    scanres=$(iw scan0 scan | tee /tmp/wicycle.scan)
   done
   iw dev scan0 del
-  echo "$scanres"
+
+  # Log
+  mkdir -p $LOG_BASEDIR
+  bssid_list=$(cat /tmp/wicycle.scan | grep ^BSS | sed -e 's/BSS \(.*\)(.*/\1/' | sort | uniq)
+  for bssid in $bssid_list ; do
+    echo $NOW >> $LOG_BASEDIR/$bssid
+  done
+  count=$(echo "$bssid_list" | wc -l)
+  logger wicycle Logged $count networks
 }
 
 Connect()
@@ -46,14 +60,31 @@ Connect()
 ScanAndConnect()
 {
   scanres=`ScanNetworks`
-  for ssid in $scanres ; do
-    active=$(echo $scanres | grep " $ssid ">&1 )
-    if [ "$active" ]; then
-      logger wicycle: Found "$ssid" network.
-      Connect $ssid 1
-      sleep 5
-      CheckNetwork && return 0
-    fi
+  cat /tmp/wicycle.scan | sed -e 's#(on # (on #g' | awk -f /bin/wicycle.awk > /tmp/wicycle.scan.sh
+  . /tmp/wicycle.scan.sh
+  logger wicycle NETWORK_COUNT=$NETWORK_COUNT
+  net=0
+  while [ $net != $NETWORK_COUNT ] ; do
+    net=$(expr $net + 1)
+    for prefix in BSS SSID CHANNEL ENCRYPTION ; do
+      varname="${prefix}_${net}"
+      logger wicycle $net $prefix "$(eval echo \$$varname)" 
+#    if [ "$open" ]; then
+#      Connect $ssid 1 none
+#      sleep 5
+#      CheckNetwork && return 0
+#    fi
+    done
+  done
+}
+
+SendLog()
+{
+  [ -r $LOG_BASEDIR ] || return 1
+  for bssid in `ls $LOG_BASEDIR` ; do
+    file=$LOG_BASEDIR/$bssid
+    echo "Sending $file"
+    echo $'POST /log/'`echo $bssid`$' HTTP/1.1\r\nUser-Agent:wicycle/0.1\r\nContent-type: application/x-www-form-urlencoded\r\nContent-length: '`wc -c < $file`$'\r\nConnection: Close\r\n\r\n'`cat $file` | nc $HOME_HOSTNAME $HOME_PORT
   done
 }
 
@@ -61,10 +92,14 @@ if [ "$1" = "--check" ]; then
   CheckNetwork
 elif [ "$1" = "--scan" ]; then
   ScanNetworks
-else  
+elif [ "$1" = "--reconnect" ]; then
+  ScanAndConnect
+elif [ "$1" = "--send" ]; then
+  SendLog
+else
   while [ "1" ]; do
+    ( CheckNetwork || ScanAndConnect ) && SendLog
     sleep 10
-    CheckNetwork || ScanAndConnect
   done
 fi
 

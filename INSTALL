@@ -1,0 +1,6 @@
+#!/bin/sh
+cp wicycle.sh /bin/wicycle
+cp wicycle.awk /bin/wicycle.awk
+cp wicycle /etc/init.d/wicycle
+chmod a+x /bin/wicycle
+
