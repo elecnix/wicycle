@@ -8,7 +8,7 @@ HOME_BASEURL=http://$HOME_HOSTNAME:$HOME_PORT
 CheckNetwork()
 {
   logger wicycle: Checking network...
-  net=$(ping 8.8.8.8 -c5 | grep "time=")
+  net=$(ping 8.8.8.8 -c5 2>/dev/null | grep "time=")
   if [ "$net" ]; then
     logger wicycle: Network check passed.
     return 0
@@ -23,8 +23,8 @@ ScanNetworks()
   logger wicycle: Performing network scan...
   scanres=
   ifconfig wlan0 down
-  iw phy phy0 interface add scan0 type station
-  ifconfig scan0 up
+  iw phy phy0 interface add scan0 type station || return 1
+  ifconfig scan0 up || return 2
   while [ "$scanres" = "" ]; do
     NOW=$(date -Iseconds)
     scanres=$(iw scan0 scan | tee /tmp/wicycle.scan)
@@ -76,6 +76,8 @@ ScanAndConnect()
 #    fi
     done
   done
+  # TODO
+  exit 1
 }
 
 SendLog()
@@ -88,6 +90,14 @@ SendLog()
   done
 }
 
+MainLoop()
+{
+  while [ "1" ]; do
+    ( CheckNetwork || ScanAndConnect ) && SendLog
+    sleep 30
+  done
+}
+
 if [ "$1" = "--check" ]; then
   CheckNetwork
 elif [ "$1" = "--scan" ]; then
@@ -96,10 +106,10 @@ elif [ "$1" = "--reconnect" ]; then
   ScanAndConnect
 elif [ "$1" = "--send" ]; then
   SendLog
+elif [ "$1" = "--daemon" ]; then
+  MainLoop &
+  echo "$!" > /var/run/wicycle.pid             
 else
-  while [ "1" ]; do
-    ( CheckNetwork || ScanAndConnect ) && SendLog
-    sleep 10
-  done
+  MainLoop
 fi
 

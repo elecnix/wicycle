@@ -6,10 +6,11 @@ ARGS=--daemon
 PID_FILE=/var/run/$APP.pid
 
 start() {
-        start-stop-daemon -S -x $APP -- "$ARGS" -p $PID_FILE -m -b
+        start-stop-daemon -S -x $APP -- "$ARGS" -p $PID_FILE -m
 }
 
 stop() {
         start-stop-daemon -K -n $APP -p $PID_FILE -s TERM
         rm -rf $PID_FILE
 }
+

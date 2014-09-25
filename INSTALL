@@ -2,5 +2,6 @@
 cp wicycle.sh /bin/wicycle
 cp wicycle.awk /bin/wicycle.awk
 cp wicycle /etc/init.d/wicycle
-chmod a+x /bin/wicycle
+chmod a+x /bin/wicycle /etc/init.d/wicycle
+ln -s ../init.d/wicycle /etc/rc.d/S70wicycle
 
